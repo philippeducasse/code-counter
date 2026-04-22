@@ -1,5 +1,7 @@
 #include <stdio.h>
 #include <string.h>
+#include <dirent.h>
+#include <sys/stat.h>
 
 int count_lines(const char *path)
 {
@@ -23,21 +25,6 @@ int count_lines(const char *path)
     return count;
 }
 
-int main(int argc, char *argv[])
-{
-    if (argc < 2)
-    {
-        printf("Usage: ./cc <path>\n");
-        return 1;
-    }
-
-    char *path = argv[1];
-    int lines = count_lines(path);
-
-    printf("Total lines: %d\n", lines);
-    return 0;
-}
-
 int should_skip_dir(const char *name)
 {
     const char *skip[] = {".git",
@@ -54,14 +41,86 @@ int should_skip_dir(const char *name)
     return 0;
 }
 
+int has_counted_extention(const char *name, const char *extensions[])
+{
+    const char *ext = strrchr(name, '.');
+    if (!ext)
+        return 0;
+
+    for (int i = 0; extensions[i] != NULL; i++)
+    {
+        if (strcmp(ext, extensions[i]) == 0)
+            return 1;
+    }
+    return 0;
+}
+
 int is_counted_file(const char *name)
 {
     if (name[0] == '.')
         return 0; // skip hidden files
 
-    const char *ext = strrchr(name, '.'); // strrchr finds last occurence of a char and returns a pointer to that occurence
-    if (!ext)
-        return 0;
+    const char *exts[] = {".py", ".ts", ".tsx", ".js", ".jsx", ".vue", ".yml", ".yaml", ".toml", ".c", NULL};
+    return has_counted_extention(name, exts) || strstr(name, "ocker") != NULL;
+}
 
-    return strcmp(ext, ".py") == 0 || strcmp(ext, ".ts") == 0 || strcmp(ext, ".js") == 0 || strcmp(ext, ".c") == 0;
+int walk_dir(const char *path)
+{
+    DIR *dir = opendir(path);
+
+    if (!dir)
+    {
+        perror("opendir");
+        return -1;
+    }
+
+    int total = 0;
+    struct dirent *entry;
+
+    while ((entry = readdir(dir)) != NULL)
+    {
+        if (entry->d_name[0] == '.')
+            continue; // skip hidden directories
+        if (should_skip_dir(entry->d_name))
+            continue;
+
+        char full_path[1024];
+        snprintf(full_path, sizeof(full_path), "%s/%s", path, entry->d_name);
+
+        struct stat st;
+        if (stat(full_path, &st) == -1)
+            continue;
+
+        if (S_ISREG(st.st_mode) && is_counted_file(entry->d_name))
+        {
+            total += count_lines(full_path);
+        }
+        else if (S_ISDIR(st.st_mode))
+        {
+            total += walk_dir(full_path);
+        }
+    }
+
+    closedir(dir);
+    return total;
+}
+
+int main(int argc, char *argv[])
+{
+    if (argc < 2)
+    {
+        printf("Usage: ./cc <path>\n");
+        return 1;
+    }
+    char *path = argv[1];
+
+    int lines = walk_dir(path);
+    if (lines == -1)
+    {
+        perror("main");
+        return 1;
+    }
+
+    printf("Total lines: %d\n", lines);
+    return 0;
 }
