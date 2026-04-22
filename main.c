@@ -3,6 +3,13 @@
 #include <dirent.h>
 #include <sys/stat.h>
 
+struct LangStats
+{
+    const char *ext;
+    int total_lines;
+    int file_count;
+};
+
 int count_lines(const char *path)
 {
     FILE *file = fopen(path, "r");
@@ -31,6 +38,10 @@ int should_skip_dir(const char *name)
                           "node_modules",
                           "__pycache__",
                           "migrations",
+                          "staticfiles",
+                          "static",
+                          "dist",
+                          "build",
                           NULL};
 
     for (int i = 0; skip[i] != NULL; i++)
@@ -64,7 +75,7 @@ int is_counted_file(const char *name)
     return has_counted_extention(name, exts) || strstr(name, "ocker") != NULL;
 }
 
-int walk_dir(const char *path)
+int walk_dir(const char *path, struct LangStats stats[])
 {
     DIR *dir = opendir(path);
 
@@ -74,7 +85,6 @@ int walk_dir(const char *path)
         return -1;
     }
 
-    int total = 0;
     struct dirent *entry;
 
     while ((entry = readdir(dir)) != NULL)
@@ -93,16 +103,25 @@ int walk_dir(const char *path)
 
         if (S_ISREG(st.st_mode) && is_counted_file(entry->d_name))
         {
-            total += count_lines(full_path);
+            int lines = count_lines(full_path);
+
+            for (int i = 0; stats[i].ext != NULL; i++)
+            {
+                if (has_counted_extention(entry->d_name, (const char *[]){stats[i].ext, NULL}))
+                {
+                    stats[i].total_lines += lines;
+                    stats[i].file_count++;
+                    break;
+                }
+            }
         }
         else if (S_ISDIR(st.st_mode))
         {
-            total += walk_dir(full_path);
+            walk_dir(full_path, stats);
         }
     }
 
     closedir(dir);
-    return total;
 }
 
 int main(int argc, char *argv[])
@@ -112,15 +131,43 @@ int main(int argc, char *argv[])
         printf("Usage: ./cc <path>\n");
         return 1;
     }
+    struct LangStats stats[] = {
+        {".py", 0, 0},
+        {".ts", 0, 0},
+        {".tsx", 0, 0},
+        {".js", 0, 0},
+        {".jsx", 0, 0},
+        {".vue", 0, 0},
+        {".yml", 0, 0},
+        {".yaml", 0, 0},
+        {".toml", 0, 0},
+        {".c", 0, 0},
+        {NULL, 0, 0}};
+
     char *path = argv[1];
 
-    int lines = walk_dir(path);
-    if (lines == -1)
+    walk_dir(path, stats);
+
+    int total_lines = 0;
+    int total_files = 0;
+
+    for (int i = 0; stats[i].ext != NULL; i++)
     {
-        perror("main");
-        return 1;
+        total_lines += stats[i].total_lines;
+        total_files += stats[i].file_count;
     }
 
-    printf("Total lines: %d\n", lines);
+    printf("Total lines: %d\n", total_lines);
+    printf("Average lines per file: %d\n", total_files > 0 ? total_lines / total_files : 0);
+    for (int i = 0; stats[i].ext != NULL; i++)
+    {
+        if (stats[i].file_count > 0)
+        {
+            printf("%s files: %d lines (%d files)\n",
+                   stats[i].ext,
+                   stats[i].total_lines,
+                   stats[i].file_count);
+        }
+    }
     return 0;
 }
