@@ -47,6 +47,7 @@ int should_skip_dir(const char *name, const char **included)
     for (int i = 0; skip[i] != NULL; i++)
     {
         if (strcmp(name, skip[i]) == 0)
+        {
             for (int j = 0; included[j] != NULL; j++)
             {
                 if (strcmp(name, included[j]) == 0)
@@ -54,7 +55,8 @@ int should_skip_dir(const char *name, const char **included)
                     return 0;
                 }
             }
-        return 1;
+            return 1;
+        }
     }
     return 0;
 }
